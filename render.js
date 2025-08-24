@@ -1,37 +1,44 @@
 #!/usr/bin/env node
 
-const mume = require('@shd101wyy/mume');
-const fs = require('fs-extra');
-const path = require('path');
-const frontMatter = require('front-matter');
+const mume = require("@shd101wyy/mume");
+const fs = require("fs-extra");
+const path = require("path");
+const frontMatter = require("front-matter");
 
 // 导航菜单配置
 const navItems = [
-  { name: '首页', path: '/', folder: 'about', isHome: true },
-  { name: '技术文章', path: '/articles/', folder: 'articles' },
-  { name: '随笔', path: '/blog/', folder: 'blog' },
-  { name: '开源项目', path: '/projects/', folder: 'projects' }
+  { name: "首页", path: "/", folder: "about", isHome: true },
+  { name: "技术文章", path: "/articles/", folder: "articles" },
+  { name: "随笔", path: "/blog/", folder: "blog" },
+  { name: "开源项目", path: "/projects/", folder: "projects" },
 ];
 
 // 生成导航HTML
-function generateNav(currentPath = '') {
-  return navItems.map(item => {
-    // 特殊处理主页激活状态
-    let isActive = false;
-    if (item.isHome) {
-      isActive = currentPath === '/' || currentPath === '' || currentPath === 'index.html';
-    } else {
-      isActive = currentPath.startsWith(item.path);
-    }
-    
-    // 使用基于根目录的相对路径（以/开头）
-    const href = item.isHome ? '/index.html' : `/${item.folder}/index.html`;
-    return `<li><a href="${href}" class="${isActive ? 'active' : ''}">${item.name}</a></li>`;
-  }).join('\n');
+function generateNav(currentPath = "") {
+  return navItems
+    .map((item) => {
+      // 特殊处理主页激活状态
+      let isActive = false;
+      if (item.isHome) {
+        isActive =
+          currentPath === "/" ||
+          currentPath === "" ||
+          currentPath === "index.html";
+      } else {
+        isActive = currentPath.startsWith(item.path);
+      }
+
+      // 使用基于根目录的相对路径（以/开头）
+      const href = item.isHome ? "/index.html" : `/${item.folder}/index.html`;
+      return `<li><a href="${href}" class="${isActive ? "active" : ""}">${
+        item.name
+      }</a></li>`;
+    })
+    .join("\n");
 }
 
 // 生成HTML页面模板
-function generateHTML(title, content, currentPath = '') {
+function generateHTML(title, content, currentPath = "") {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -316,88 +323,99 @@ function generateHTML(title, content, currentPath = '') {
 async function processMarkdownFile(filePath) {
   try {
     console.log(`处理文件: ${filePath}`);
-    
+
+    // 获取Markdown文件所在目录
+    const mdFileDir = path.dirname(filePath);
     // 读取文件内容
-    const content = await fs.readFile(filePath, 'utf8');
-    
+    const content = await fs.readFile(filePath, "utf8");
+
     // 解析Front Matter
     const parsed = frontMatter(content);
     const body = parsed.body;
     const attributes = parsed.attributes;
-    
-    let title = path.basename(filePath, '.md');
+
+    let title = path.basename(filePath, ".md");
     if (attributes.title) {
       title = attributes.title;
     }
-    
+
     // 初始化Mume引擎
     const engine = new mume.MarkdownEngine({
       filePath: filePath,
       config: {
-        mathRenderingOption: 'KaTeX',
-        codeBlockTheme: 'dark.css',
-        previewTheme: 'github-dark.css',
+        mathRenderingOption: "KaTeX",
+        codeBlockTheme: "dark.css",
+        previewTheme: "github-dark.css",
         enableScriptExecution: false,
         breakOnSingleNewLine: false,
         enableTypographer: false,
         enableEmoji: true,
-      }
+      },
     });
-    
+
     // 在Markdown渲染前预处理相对路径
     // 提取所有相对路径的图像引用，避免Mume转换为绝对路径
-    const relativeImageRegex = /!\[.*?\]\((\.\/.*?\.(jpg|png|gif|svg))\)/g;
+    const relativeImageRegex = /!\[.*?\]\(((?:\.\/)?.*?\.(jpg|png|gif|svg))\)/g;
     const imageMatches = [];
     let match;
-    
+
     while ((match = relativeImageRegex.exec(body)) !== null) {
-        imageMatches.push(match[1]);
+      imageMatches.push(match[1]);
     }
-    
+
     // 渲染Markdown为HTML
     const result = await engine.parseMD(body, {});
     let htmlContent = result.html;
-    
-    // 恢复原始的相对路径
-    imageMatches.forEach(relativePath => {
-        const escapedPath = relativePath.replace(/\//g, '\\/');
-        const absolutePathRegex = new RegExp(`file:///[^"]*${escapedPath}"`, 'g');
-        htmlContent = htmlContent.replace(absolutePathRegex, `"${relativePath}"`);
-    });
-    
+
+    // 恢复原始的相对路径 - 使用通用方法处理所有图片路径
+    htmlContent = htmlContent.replace(
+      /file:\/\/\/[^"]*\.(jpg|png|gif|svg)/g,
+      (absolutePath) => {
+        // 移除file://前缀
+        const fileSystemPath = absolutePath.replace("file://", "");
+
+        // 计算相对于Markdown文件所在目录的相对路径
+        const relativePath = path.relative(mdFileDir, fileSystemPath);
+
+        return relativePath;
+      }
+    );
+
     // 修复双引号问题
     htmlContent = htmlContent.replace(/""/g, '"');
-    
+
     // 包装到我们的模板中
-    const outputPath = filePath.replace('.md', '.html');
-    const relativePath = path.relative(path.dirname(outputPath), '');
-    
+    const outputPath = filePath.replace(".md", ".html");
+    const relativePath = path.relative(path.dirname(outputPath), "");
+
     // 为文章页面添加返回按钮（不是索引页，也不是主页）
     const folderName = path.dirname(filePath).split(path.sep).pop();
-    const isArticlePage = folderName !== '.' && 
-                         navItems.some(item => item.folder === folderName) &&
-                         !navItems.find(item => item.folder === folderName)?.isHome;
-    
+    const isArticlePage =
+      folderName !== "." &&
+      navItems.some((item) => item.folder === folderName) &&
+      !navItems.find((item) => item.folder === folderName)?.isHome;
+
     let finalContent = htmlContent;
     if (isArticlePage) {
       // 在文章内容开头添加返回按钮
-      const backButton = `<a href="index.html" class="back-button">← 返回${navItems.find(item => item.folder === folderName).name}</a>`;
+      const backButton = `<a href="index.html" class="back-button">← 返回${
+        navItems.find((item) => item.folder === folderName).name
+      }</a>`;
       finalContent = backButton + htmlContent;
     }
-    
+
     const fullHTML = generateHTML(title, finalContent, relativePath);
-    
+
     await fs.writeFile(outputPath, fullHTML);
     console.log(`生成成功: ${outputPath}`);
-    
-    return { 
+
+    return {
       title,
       date: attributes.date,
       tags: attributes.tags,
       excerpt: attributes.excerpt,
-      image: attributes.image  // 添加image字段
+      image: attributes.image, // 添加image字段
     };
-    
   } catch (error) {
     console.error(`处理文件 ${filePath} 时出错:`, error);
     throw error;
@@ -406,170 +424,212 @@ async function processMarkdownFile(filePath) {
 
 // 生成目录索引页面
 async function generateIndexPage(folder, articles, allArticles = []) {
-  const navItem = navItems.find(item => item.folder === folder);
-  
-    // 如果是主页（关于我页面），则生成主页内容
-    if (navItem.isHome) {
-      // 读取关于我页面的HTML内容
-      const aboutContent = await fs.readFile(path.join(folder, 'about.html'), 'utf8');
-      
-      // 提取main标签内的内容
-      const mainContentMatch = aboutContent.match(/<main>([\s\S]*?)<\/main>/);
-      if (mainContentMatch && mainContentMatch[1]) {
-        let mainContent = mainContentMatch[1];
-        
-        // 修复相对路径链接
-        mainContent = mainContent.replace(/file:\/\/\/home\/jones\/Git\/huluoboge\/blog\/about\//g, '../');
-        mainContent = mainContent.replace(/file:\/\/\/home\/jones\/Git\/huluoboge\/blog\//g, '../');
-        
-        // 获取最新文章（只从技术文章中获取，按日期排序的前3篇），排除关于我页面
-        const allArticlesSorted = allArticles
-          .filter(article => article.date && !article.file.includes('about.md') && article.folder === 'articles') // 只包含有日期的技术文章，排除关于我页面
-          .sort((a, b) => new Date(b.date) - new Date(a.date)) // 按日期降序
-          .slice(0, 3); // 取前3篇
-        
-        // 移除调试信息
-        
-        // 生成最新文章列表HTML
-        const latestArticlesHTML = allArticlesSorted.map(article => {
+  const navItem = navItems.find((item) => item.folder === folder);
+
+  // 如果是主页（关于我页面），则生成主页内容
+  if (navItem.isHome) {
+    // 读取关于我页面的HTML内容
+    const aboutContent = await fs.readFile(
+      path.join(folder, "about.html"),
+      "utf8"
+    );
+
+    // 提取main标签内的内容
+    const mainContentMatch = aboutContent.match(/<main>([\s\S]*?)<\/main>/);
+    if (mainContentMatch && mainContentMatch[1]) {
+      let mainContent = mainContentMatch[1];
+
+      // 修复相对路径链接
+      mainContent = mainContent.replace(
+        /file:\/\/\/home\/jones\/Git\/huluoboge\/blog\/about\//g,
+        "../"
+      );
+      mainContent = mainContent.replace(
+        /file:\/\/\/home\/jones\/Git\/huluoboge\/blog\//g,
+        "../"
+      );
+
+      // 获取最新文章（只从技术文章中获取，按日期排序的前3篇），排除关于我页面
+      const allArticlesSorted = allArticles
+        .filter(
+          (article) =>
+            article.date &&
+            !article.file.includes("about.md") &&
+            article.folder === "articles"
+        ) // 只包含有日期的技术文章，排除关于我页面
+        .sort((a, b) => new Date(b.date) - new Date(a.date)) // 按日期降序
+        .slice(0, 3); // 取前3篇
+
+      // 移除调试信息
+
+      // 生成最新文章列表HTML
+      const latestArticlesHTML = allArticlesSorted
+        .map((article) => {
           // 根据文章所在的文件夹生成正确的相对路径
           let articlePath;
-          if (article.folder === 'articles') {
-            articlePath = `articles/${article.file.replace('.md', '.html')}`;
-          } else if (article.folder === 'blog') {
-            articlePath = `blog/${article.file.replace('.md', '.html')}`;
-          } else if (article.folder === 'projects') {
-            articlePath = `projects/${article.file.replace('.md', '.html')}`;
+          if (article.folder === "articles") {
+            articlePath = `articles/${article.file.replace(".md", ".html")}`;
+          } else if (article.folder === "blog") {
+            articlePath = `blog/${article.file.replace(".md", ".html")}`;
+          } else if (article.folder === "projects") {
+            articlePath = `projects/${article.file.replace(".md", ".html")}`;
           } else {
-            articlePath = article.file.replace('.md', '.html');
+            articlePath = article.file.replace(".md", ".html");
           }
-          
-          return `<li><a href="${articlePath}">${article.title}</a> - ${new Date(article.date).toLocaleDateString('zh-CN')}</li>`;
-        }).join('\n');
-        
-        // 获取开源项目（projects文件夹中的所有项目）
-        const openSourceProjects = allArticles
-          .filter(article => article.folder === 'projects')
-          .sort((a, b) => new Date(b.date) - new Date(a.date)); // 按日期排序
-        
-        // 生成开源项目列表HTML
-        const openSourceProjectsHTML = openSourceProjects.map(project => {
-          const projectPath = `projects/${project.file.replace('.md', '.html')}`;
-          return `<li><a href="${projectPath}">${project.title}</a> - ${project.excerpt || '开源项目'}</li>`;
-        }).join('\n');
-        
-        // 替换主页中的占位符
-        let updatedContent = mainContent;
-        
-        // 替换最新文章占位符
-        if (mainContent.includes('<div id="latest-articles-placeholder"></div>')) {
-          updatedContent = updatedContent.replace(
-            '<div id="latest-articles-placeholder"></div>',
-            `<ul>${latestArticlesHTML}</ul>`
-          );
-        }
-        
-        // 替换开源项目占位符
-        if (mainContent.includes('<div id="open-source-projects-placeholder"></div>')) {
-          updatedContent = updatedContent.replace(
-            '<div id="open-source-projects-placeholder"></div>',
-            `<ul>${openSourceProjectsHTML}</ul>`
-          );
-        }
-        
-        // 生成主页内容
-        const content = updatedContent;
-        const outputPath = path.join(folder, 'index.html');
-        const html = generateHTML(navItem.name, content, '/');
-        
-        await fs.outputFile(outputPath, html);
-        console.log(`生成主页: ${outputPath}`);
-        
-        // 同时复制到根目录作为主页
-        await fs.copy(outputPath, 'index.html');
-        console.log('复制主页到根目录');
+
+          return `<li><a href="${articlePath}">${
+            article.title
+          }</a> - ${new Date(article.date).toLocaleDateString("zh-CN")}</li>`;
+        })
+        .join("\n");
+
+      // 获取开源项目（projects文件夹中的所有项目）
+      const openSourceProjects = allArticles
+        .filter((article) => article.folder === "projects")
+        .sort((a, b) => new Date(b.date) - new Date(a.date)); // 按日期排序
+
+      // 生成开源项目列表HTML
+      const openSourceProjectsHTML = openSourceProjects
+        .map((project) => {
+          const projectPath = `projects/${project.file.replace(
+            ".md",
+            ".html"
+          )}`;
+          return `<li><a href="${projectPath}">${project.title}</a> - ${
+            project.excerpt || "开源项目"
+          }</li>`;
+        })
+        .join("\n");
+
+      // 替换主页中的占位符
+      let updatedContent = mainContent;
+
+      // 替换最新文章占位符
+      if (
+        mainContent.includes('<div id="latest-articles-placeholder"></div>')
+      ) {
+        updatedContent = updatedContent.replace(
+          '<div id="latest-articles-placeholder"></div>',
+          `<ul>${latestArticlesHTML}</ul>`
+        );
       }
-    } else {
+
+      // 替换开源项目占位符
+      if (
+        mainContent.includes(
+          '<div id="open-source-projects-placeholder"></div>'
+        )
+      ) {
+        updatedContent = updatedContent.replace(
+          '<div id="open-source-projects-placeholder"></div>',
+          `<ul>${openSourceProjectsHTML}</ul>`
+        );
+      }
+
+      // 生成主页内容
+      const content = updatedContent;
+      const outputPath = path.join(folder, "index.html");
+      const html = generateHTML(navItem.name, content, "/");
+
+      await fs.outputFile(outputPath, html);
+      console.log(`生成主页: ${outputPath}`);
+
+      // 同时复制到根目录作为主页
+      await fs.copy(outputPath, "index.html");
+      console.log("复制主页到根目录");
+    }
+  } else {
     // 其他分类的正常索引页面
-    const listHTML = articles.map(article => {
-      const hasImage = article.image && article.image.trim() !== '';
-      return `
-      <div class="article-item ${hasImage ? 'article-item-with-image' : ''}">
-          ${hasImage ? `
+    const listHTML = articles
+      .map((article) => {
+        const hasImage = article.image && article.image.trim() !== "";
+        return `
+      <div class="article-item ${hasImage ? "article-item-with-image" : ""}">
+          ${
+            hasImage
+              ? `
           <div class="article-thumbnail-container">
               <img src="${article.image}" alt="${article.title}" class="article-thumbnail">
           </div>
-          ` : ''}
+          `
+              : ""
+          }
           <div class="article-content">
               <h3><a href="${article.slug}.html">${article.title}</a></h3>
               <div class="article-meta">
-                  ${article.date ? `发布于: ${article.date}` : ''}
-                  ${article.tags ? ` | 标签: ${article.tags.join(', ')}` : ''}
+                  ${article.date ? `发布于: ${article.date}` : ""}
+                  ${article.tags ? ` | 标签: ${article.tags.join(", ")}` : ""}
               </div>
-              ${article.excerpt ? `<p>${article.excerpt}</p>` : ''}
+              ${article.excerpt ? `<p>${article.excerpt}</p>` : ""}
           </div>
       </div>
-    `}).join('\n');
-    
+    `;
+      })
+      .join("\n");
+
     const content = `
       <h1>${navItem.name}</h1>
       <div class="article-list">
           ${listHTML}
       </div>
     `;
-    
-    const outputPath = path.join(folder, 'index.html');
+
+    const outputPath = path.join(folder, "index.html");
     const html = generateHTML(navItem.name, content, `/${folder}/`);
-    
+
     await fs.outputFile(outputPath, html);
     console.log(`生成索引: ${outputPath}`);
   }
 }
 
 // 复制静态资源到输出目录
-async function copyStaticAssets(outputDir = '.') {
-  console.log('复制静态资源...');
-  const staticSource = 'static';
-  const staticDest = path.join(outputDir, 'static');
-  
+async function copyStaticAssets(outputDir = ".") {
+  console.log("复制静态资源...");
+  const staticSource = "static";
+  const staticDest = path.join(outputDir, "static");
+
   // 如果源和目标路径相同，跳过复制
   if (staticSource === staticDest) {
-    console.log('静态资源已存在，跳过复制');
+    console.log("静态资源已存在，跳过复制");
     return;
   }
-  
+
   if (await fs.pathExists(staticSource)) {
     await fs.copy(staticSource, staticDest);
-    console.log('静态资源复制完成');
+    console.log("静态资源复制完成");
   } else {
-    console.log('静态资源目录不存在，跳过复制');
+    console.log("静态资源目录不存在，跳过复制");
   }
 }
 
 // 主渲染函数
 async function renderAll() {
-  console.log('开始使用Mume生成博客...');
-  
+  console.log("开始使用Mume生成博客...");
+
   try {
     // 初始化Mume
-    console.log('初始化Mume...');
+    console.log("初始化Mume...");
     await mume.init();
-    
+
     // 复制静态资源
     await copyStaticAssets();
-    
+
     const allArticles = [];
-    
+
     // 第一步：收集所有文章信息
     for (const navItem of navItems) {
       const folderPath = navItem.folder;
-      
+
       if (await fs.pathExists(folderPath)) {
         const files = await fs.readdir(folderPath);
-        const mdFiles = files.filter(file => file.endsWith('.md') && file !== 'README.md');
-        
-        console.log(`收集文件夹 ${folderPath}: 找到 ${mdFiles.length} 个Markdown文件`);
-        
+        const mdFiles = files.filter(
+          (file) => file.endsWith(".md") && file !== "README.md"
+        );
+
+        console.log(
+          `收集文件夹 ${folderPath}: 找到 ${mdFiles.length} 个Markdown文件`
+        );
+
         for (const file of mdFiles) {
           const filePath = path.join(folderPath, file);
           try {
@@ -577,9 +637,9 @@ async function renderAll() {
             if (meta) {
               allArticles.push({
                 ...meta,
-                slug: path.basename(file, '.md'),
+                slug: path.basename(file, ".md"),
                 file: file,
-                folder: folderPath
+                folder: folderPath,
               });
             }
           } catch (error) {
@@ -588,32 +648,37 @@ async function renderAll() {
         }
       }
     }
-    
-    console.log('所有文章收集完成，共', allArticles.length, '篇文章');
-    
+
+    console.log("所有文章收集完成，共", allArticles.length, "篇文章");
+
     // 第二步：生成所有页面，传递完整的文章列表
     for (const navItem of navItems) {
       const folderPath = navItem.folder;
-      
+
       if (await fs.pathExists(folderPath)) {
         const files = await fs.readdir(folderPath);
-        const mdFiles = files.filter(file => file.endsWith('.md') && file !== 'README.md');
-        
-        const articles = allArticles.filter(article => article.folder === folderPath);
-        
-        console.log(`生成文件夹 ${folderPath} 的页面: ${articles.length} 篇文章`);
-        
+        const mdFiles = files.filter(
+          (file) => file.endsWith(".md") && file !== "README.md"
+        );
+
+        const articles = allArticles.filter(
+          (article) => article.folder === folderPath
+        );
+
+        console.log(
+          `生成文件夹 ${folderPath} 的页面: ${articles.length} 篇文章`
+        );
+
         // 生成索引页面
         if (articles.length > 0) {
           await generateIndexPage(navItem.folder, articles, allArticles);
         }
       }
     }
-    
-    console.log('博客生成完成！');
-    
+
+    console.log("博客生成完成！");
   } catch (error) {
-    console.error('渲染过程中发生错误:', error);
+    console.error("渲染过程中发生错误:", error);
     throw error;
   }
 }
@@ -621,18 +686,17 @@ async function renderAll() {
 // 主程序
 async function main() {
   const args = process.argv.slice(2);
-  const isWatchMode = args.includes('--watch');
-  
+  const isWatchMode = args.includes("--watch");
+
   try {
     await renderAll();
-    
+
     if (isWatchMode) {
-      console.log('监视模式已启动，文件变化时将自动重新生成...');
+      console.log("监视模式已启动，文件变化时将自动重新生成...");
       // 这里可以添加文件监视逻辑
     }
-    
   } catch (error) {
-    console.error('程序执行失败:', error);
+    console.error("程序执行失败:", error);
     process.exit(1);
   }
 }
