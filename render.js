@@ -116,6 +116,33 @@ function generateHTML(title, content, currentPath = "") {
             // 初始化主题
             const savedTheme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', savedTheme);
+            
+            // 汉堡菜单功能
+            window.toggleMenu = function() {
+                const navMenu = document.querySelector('.nav-menu');
+                navMenu.classList.toggle('active');
+            }
+            
+            // 点击页面其他区域关闭菜单
+            document.addEventListener('click', function(event) {
+                const navMenu = document.querySelector('.nav-menu');
+                const hamburger = document.querySelector('.hamburger');
+                
+                if (navMenu.classList.contains('active') && 
+                    !navMenu.contains(event.target) && 
+                    !hamburger.contains(event.target)) {
+                    navMenu.classList.remove('active');
+                }
+            });
+            
+            // 点击导航链接后关闭菜单
+            const navLinks = document.querySelectorAll('.nav-menu a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    const navMenu = document.querySelector('.nav-menu');
+                    navMenu.classList.remove('active');
+                });
+            });
         });
     </script>
     <style>
@@ -302,14 +329,71 @@ function generateHTML(title, content, currentPath = "") {
             object-fit: cover;
             border-radius: 3px;
         }
+        
+        /* 汉堡菜单样式 */
+        .hamburger {
+            display: none;
+            background: none;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.5rem;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+        
+        .hamburger:hover {
+            background: var(--border-color);
+        }
+        
+        /* 移动端响应式样式 */
+        @media (max-width: 768px) {
+            .hamburger {
+                display: block;
+            }
+            
+            .nav-menu {
+                display: none;
+                flex-direction: column;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: var(--nav-bg);
+                padding: 1rem;
+                border-radius: 0 0 5px 5px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                z-index: 1000;
+            }
+            
+            .nav-menu.active {
+                display: flex;
+            }
+            
+            nav ul {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            nav {
+                position: relative;
+                flex-wrap: wrap;
+            }
+            
+            .theme-switch {
+                margin-left: auto;
+            }
+        }
     </style>
 </head>
 <body>
     <nav>
-        <ul>
+        <button class="hamburger" onclick="toggleMenu()">☰</button>
+        <ul class="nav-menu">
             ${generateNav(currentPath)}
         </ul>
-        <button class="theme-switch" onclick="toggleTheme()">� 切换主题</button>
+        <button class="theme-switch" onclick="toggleTheme()"> 切换主题</button>
     </nav>
     
     <main>
